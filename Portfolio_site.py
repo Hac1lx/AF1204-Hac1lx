@@ -4,8 +4,6 @@
 #     "marimo>=0.19.10",
 #     "pandas>=2.3.3",
 #     "plotly>=6.5.1",
-#     "pyarrow>=22.0.0",
-#     "pyzmq>=27.1.0",
 # ]
 # ///
 
@@ -34,13 +32,21 @@ def _():
 
 @app.cell
 def _(pd):
+    from io import StringIO
     _URL = (
         "https://gist.githubusercontent.com/DrAYim/"
         "80393243abdbb4bfe3b45fef58e8d3c8/raw/"
         "ed5cfd9f210bf80cb59a5f420bf8f2b88a9c2dcd/"
         "sp500_ZScore_AvgCostofDebt.csv"
     )
-    sp_df = pd.read_csv(_URL)
+    try:
+        # WASM / GitHub Pages (Pyodide) — must use open_url instead of pd.read_csv(url)
+        from pyodide.http import open_url as _open_url
+        sp_df = pd.read_csv(StringIO(_open_url(_URL).read()))
+    except ImportError:
+        # Local desktop run
+        sp_df = pd.read_csv(_URL)
+
     sp_df.columns = sp_df.columns.str.strip()          # normalise any whitespace in headers
 
     # Detect fiscal-year column regardless of exact capitalisation
@@ -48,12 +54,11 @@ def _(pd):
     if "fyear" not in sp_df.columns and _fyear_candidates:
         sp_df = sp_df.rename(columns={_fyear_candidates[0]: "fyear"})
     elif "fyear" not in sp_df.columns:
-        # Last resort: derive from any datetime-like column or set a placeholder
         _date_cols = [c for c in sp_df.columns if "date" in c.lower() or "yr" in c.lower()]
         if _date_cols:
             sp_df["fyear"] = pd.to_datetime(sp_df[_date_cols[0]], errors="coerce").dt.year
         else:
-            sp_df["fyear"] = 2020  # placeholder so downstream cells don't crash
+            sp_df["fyear"] = 2020
 
     # Detect market-cap column
     _mcap_candidates = [c for c in sp_df.columns if "cap" in c.lower() or "mktcap" in c.lower() or "market" in c.lower()]
